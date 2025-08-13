@@ -1,59 +1,90 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { ingestQ, DEFAULT_OPTS } from '@/lib/queues';
+// app/api/uploads/commit/route.ts
+import { NextResponse } from 'next/server';
+import { pool } from '@/lib/db';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { uploadId, mapping, zone, timezone } = body;
-
-    // Validate required fields
-    if (!uploadId || !mapping) {
+    const { uploadId, action } = await request.json();
+    
+    if (!uploadId || !action) {
       return NextResponse.json(
-        { error: 'Missing required fields: uploadId, mapping' },
+        { error: 'Missing uploadId or action' },
         { status: 400 }
       );
     }
 
-    // TODO: Retrieve upload metadata from database
-    // const upload = await db.query('SELECT * FROM uploads WHERE id = $1', [uploadId]);
-    // if (!upload.rows.length) {
-    //   return NextResponse.json({ error: 'Upload not found' }, { status: 404 });
-    // }
+    if (action === 'CANCEL') {
+      // Mark upload as cancelled and clean up
+      await pool.query(
+        `UPDATE uploads 
+         SET status = 'CANCELLED', completed_at = NOW() 
+         WHERE id = $1`,
+        [uploadId]
+      );
+      
+      // Delete any events that were loaded
+      await pool.query(
+        `DELETE FROM events WHERE upload_id = $1`,
+        [uploadId]
+      );
+      
+      return NextResponse.json({
+        status: 'CANCELLED',
+        message: 'Upload cancelled and data cleaned up'
+      });
+    }
 
-    // TODO: Validate that the upload is in UPLOADED status
-    // if (upload.rows[0].status !== 'UPLOADED') {
-    //   return NextResponse.json({ 
-    //     error: `Upload status must be UPLOADED, current status: ${upload.rows[0].status}` 
-    //   }, { status: 400 });
-    // }
+    if (action === 'COMMIT') {
+      // Check if processing is complete
+      const result = await pool.query(
+        `SELECT status, rows_claimed, rows_loaded 
+         FROM uploads 
+         WHERE id = $1`,
+        [uploadId]
+      );
+      
+      if (result.rows.length === 0) {
+        return NextResponse.json(
+          { error: 'Upload not found' },
+          { status: 404 }
+        );
+      }
 
-    // TODO: Update upload status to COMMITTED
-    // await db.query('UPDATE uploads SET status = $1, mapping = $2, zone = $3, timezone = $4, committed_at = NOW() WHERE id = $5', 
-    //   ['COMMITTED', JSON.stringify(mapping), zone, timezone, uploadId]);
+      const upload = result.rows[0];
+      
+      if (upload.status !== 'PROCESSING' && upload.status !== 'COMPLETED') {
+        return NextResponse.json(
+          { error: 'Upload not ready to commit' },
+          { status: 400 }
+        );
+      }
 
-    // Enqueue ingest job as specified in the spec
-    const ingestJob = {
-      uploadId,
-      mapping,
-      zone,
-      timezone,
-      // TODO: Add S3 file location once database is implemented
-      // s3Location: upload.rows[0].s3_location
-    };
+      // Mark as completed
+      await pool.query(
+        `UPDATE uploads 
+         SET status = 'COMPLETED', completed_at = NOW() 
+         WHERE id = $1`,
+        [uploadId]
+      );
 
-    await ingestQ.add('ingest-csv', ingestJob, DEFAULT_OPTS);
+      return NextResponse.json({
+        status: 'COMPLETED',
+        message: 'Upload committed successfully',
+        stats: {
+          rowsClaimed: upload.rows_claimed,
+          rowsLoaded: upload.rows_loaded
+        }
+      });
+    }
 
-    return NextResponse.json({
-      success: true,
-      uploadId,
-      status: 'COMMITTED',
-      message: 'Upload committed and ingest job enqueued'
-    });
-
-  } catch (error) {
-    console.error('Error in uploads/commit:', error);
     return NextResponse.json(
-      { error: 'Failed to commit upload for processing' },
+      { error: 'Invalid action' },
+      { status: 400 }
+    );
+  } catch (error) {
+    console.error('Error committing upload:', error);
+    return NextResponse.json(
+      { error: 'Failed to commit upload' },
       { status: 500 }
     );
   }

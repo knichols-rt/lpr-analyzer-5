@@ -1,12 +1,15 @@
-// src/db.ts
+// lib/db.ts
 import { Pool } from 'pg';
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-export async function copyIntoEvents(csvPath: string, uploadId: string) {
-// Use pg-copy-streams or psql COPY via shell in prod; here is a placeholder
-}
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
 
-export async function pairOut(outId: number, zone: string, plate: string, ts: string) {
-const sql = 'SELECT pair_out_event($1,$2,$3,$4)';
-await pool.query(sql, [outId, zone, plate, ts]);
-}
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+});
+
+export { pool };

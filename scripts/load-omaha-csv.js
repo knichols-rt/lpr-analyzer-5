@@ -14,8 +14,8 @@ const pool = new Pool({
   connectionString: 'postgresql://lpr_user:lpr_password@localhost:5432/lpr_analyzer'
 });
 
-// CSV file path
-const csvFilePath = '/home/kyle/code/Omaha March 1-15.csv';
+// CSV file path - accept from command line or use default
+const csvFilePath = process.argv[2] || '/home/kyle/code/Omaha March 1-15.csv';
 
 // Batch size for processing
 const BATCH_SIZE = 1000;
@@ -169,6 +169,9 @@ async function main() {
   // Check if file exists
   if (!fs.existsSync(csvFilePath)) {
     console.error(`❌ File not found: ${csvFilePath}`);
+    if (!process.argv[2]) {
+      console.log('Usage: node scripts/load-omaha-csv.js <path-to-csv-file>');
+    }
     process.exit(1);
   }
   

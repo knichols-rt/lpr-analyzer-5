@@ -1,16 +1,15 @@
-// src/queues.ts
-import { Queue, JobsOptions } from 'bullmq';
+// lib/queues.ts
+import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
-const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
 
+// Create connection
+const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+});
+
+// Create queues
 export const ingestQ = new Queue('ingest', { connection });
-export const pairQ   = new Queue('pair',   { connection });
-export const fuzzyQ  = new Queue('fuzzy',  { connection });
+export const pairQ = new Queue('pair', { connection });
+export const fuzzyQ = new Queue('fuzzy', { connection });
 export const analyticsQ = new Queue('analytics', { connection });
-
-export const DEFAULT_OPTS: JobsOptions = {
-  attempts: 3,
-  backoff: { type: 'exponential', delay: 1000 },
-  removeOnComplete: { age: 3600, count: 1000 },
-  removeOnFail: { age: 24*3600 }
-};

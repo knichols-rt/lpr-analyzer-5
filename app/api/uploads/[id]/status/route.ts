@@ -1,62 +1,79 @@
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/uploads/[id]/status/route.ts
+import { NextResponse } from 'next/server';
+import { pool } from '@/lib/db';
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }  // Note: Promise type for Next.js 15
 ) {
   try {
-    const uploadId = params.id;
+    // Await params for Next.js 15
+    const { id } = await params;
+    
+    // Get real upload status from database
+    const uploadResult = await pool.query(
+      `SELECT 
+        id,
+        filename,
+        bytes,
+        rows_claimed,
+        rows_loaded,
+        status,
+        error_log,
+        created_at,
+        completed_at
+       FROM uploads 
+       WHERE id = $1`,
+      [id]
+    );
 
-    if (!uploadId) {
+    if (uploadResult.rows.length === 0) {
       return NextResponse.json(
-        { error: 'Upload ID is required' },
-        { status: 400 }
+        { error: 'Upload not found' },
+        { status: 404 }
       );
     }
 
-    // TODO: Retrieve upload status and progress from database
-    // const upload = await db.query(`
-    //   SELECT 
-    //     id, status, last_processed_row, 
-    //     inserted_count, skipped_count, error_count,
-    //     total_rows, created_at, updated_at
-    //   FROM uploads 
-    //   WHERE id = $1
-    // `, [uploadId]);
-    
-    // if (!upload.rows.length) {
-    //   return NextResponse.json({ error: 'Upload not found' }, { status: 404 });
-    // }
+    const upload = uploadResult.rows[0];
 
-    // const uploadData = upload.rows[0];
+    // Get session count if processing is complete
+    let sessionCount = 0;
+    if (upload.status === 'COMPLETED') {
+      const sessionResult = await pool.query(
+        `SELECT COUNT(*) as count 
+         FROM sessions 
+         WHERE entry_event_id IN (
+           SELECT id FROM events WHERE upload_id = $1
+         )`,
+        [id]
+      );
+      sessionCount = parseInt(sessionResult.rows[0].count);
+    }
 
-    // Mock response for development - following exact spec format
-    const mockResponse = {
-      state: 'PROCESSING', // PENDING, UPLOADED, COMMITTED, PROCESSING, COMPLETED, ERROR, ABORTED
-      counts: {
-        inserted: 1250,
-        skipped: 15,
-        errors: 3
-      },
-      lastProcessedRow: 1268,
-      totalRows: 5000,
+    return NextResponse.json({
+      uploadId: upload.id,
+      status: upload.status,
       progress: {
-        percentage: 25.36,
-        estimatedTimeRemaining: '00:03:45'
+        rowsProcessed: upload.rows_loaded || 0,
+        totalRows: upload.rows_claimed || 0,
+        percentage: upload.rows_claimed > 0 
+          ? Math.round((upload.rows_loaded / upload.rows_claimed) * 100)
+          : 0
       },
-      metadata: {
-        uploadId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
-    };
-
-    return NextResponse.json(mockResponse);
-
+      stats: {
+        filename: upload.filename,
+        bytes: upload.bytes,
+        rowsLoaded: upload.rows_loaded || 0,
+        sessionsCreated: sessionCount,
+        startTime: upload.created_at,
+        endTime: upload.completed_at
+      },
+      error: upload.error_log
+    });
   } catch (error) {
-    console.error('Error in uploads/[id]/status:', error);
+    console.error('Error fetching upload status:', error);
     return NextResponse.json(
-      { error: 'Failed to retrieve upload status' },
+      { error: 'Failed to fetch upload status' },
       { status: 500 }
     );
   }
