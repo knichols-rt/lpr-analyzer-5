@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #000000;
+  --color-foreground: #ffffff;
+  --color-card: #0a0a0a;
+  --color-card-foreground: #fafafa;
+  --color-popover: #0a0a0a;
+  --color-popover-foreground: #fafafa;
+  --color-primary: #fafafa;
+  --color-primary-foreground: #0a0a0a;
+  --color-secondary: #171717;
+  --color-secondary-foreground: #fafafa;
+  --color-muted: #171717;
+  --color-muted-foreground: #a3a3a3;
+  --color-accent: #171717;
+  --color-accent-foreground: #fafafa;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #fafafa;
+  --color-border: #262626;
+  --color-input: #171717;
+  --color-ring: #fafafa;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+  
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+}
+
+/* Custom scrollbar for dark mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-secondary;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-foreground;
+}
+
+/* Table styling */
+.table-container {
+  @apply bg-card border border-border rounded-lg;
+}
+
+.table-header {
+  @apply bg-muted text-muted-foreground font-medium;
+}
+
+.table-row {
+  @apply border-b border-border hover:bg-accent/50 transition-colors;
+}
+
+.table-cell {
+  @apply px-4 py-2 text-sm;
+}
+
+/* KPI Cards */
+.kpi-card {
+  @apply bg-card border border-border rounded-lg p-4 hover:bg-accent/50 transition-colors cursor-pointer;
+}
+
+.kpi-value {
+  @apply text-2xl font-bold text-primary;
+}
+
+.kpi-label {
+  @apply text-sm text-muted-foreground;
+}
+
+/* Badges */
+.badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+}
+
+.badge-exact {
+  @apply bg-green-900 text-green-100;
+}
+
+.badge-state-mismatch {
+  @apply bg-yellow-900 text-yellow-100;
+}
+
+.badge-fuzzy {
+  @apply bg-blue-900 text-blue-100;
+}
+
+.badge-open {
+  @apply bg-red-900 text-red-100;
+}
+
+.badge-expired {
+  @apply bg-gray-900 text-gray-100;
+}
