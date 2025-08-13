@@ -117,6 +117,12 @@ async function processBatch(events) {
       // IN events default to OPEN, OUT events default to ORPHAN_OPEN
       const status = direction === 'IN' ? 'OPEN' : 'ORPHAN_OPEN';
       
+      // Generate normalized plates
+      const plate_norm = plate_raw.replace(/[^A-Z0-9]/g, '').toUpperCase();
+      const plate_norm_fuzzy = plate_norm.replace(/[O0IL1S5]/g, (m) => 
+        ({O:'0', '0':'0', I:'1', L:'1', '1':'1', S:'5', '5':'5'})[m]
+      );
+      
       // Insert event
       await client.query(`
         INSERT INTO events (
@@ -124,15 +130,17 @@ async function processBatch(events) {
           direction, 
           plate_raw, 
           plate_norm, 
+          plate_norm_fuzzy,
           zone, 
           camera_id,
           status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `, [
         timestamp,
         direction,
         plate_raw,
-        plate_raw.replace(/[^A-Z0-9]/g, ''), // Simple plate cleaning
+        plate_norm,
+        plate_norm_fuzzy,
         zone || 'Omaha', // Default zone if not provided
         camera_id,
         status

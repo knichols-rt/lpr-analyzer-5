@@ -39,7 +39,9 @@ function parseCSV(csvData: string): any[] {
         case 'plate_raw':
           row.plate_raw = value;
           row.plate_norm = value.replace(/[^A-Z0-9]/g, '').toUpperCase();
-          row.plate_norm_fuzzy = row.plate_norm;
+          row.plate_norm_fuzzy = row.plate_norm.replace(/[O0IL1S5]/g, (m) => 
+            ({O:'0', '0':'0', I:'1', L:'1', '1':'1', S:'5', '5':'5'})[m]
+          );
           break;
         case 'state':
         case 'state_raw':

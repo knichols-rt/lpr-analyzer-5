@@ -5,9 +5,12 @@
   "main": "index.js",
   "scripts": {
     "setup-db": "node scripts/setup-database.js",
-    "test-schema": "node scripts/test-schema.js",
+    "test-schema": "node scripts/test-schema.js", 
+    "load-csv": "node scripts/load-omaha-csv.js",
+    "workers": "ts-node src/workers/index.ts",
+    "workers:dev": "nodemon --exec ts-node src/workers/index.ts",
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && tsc",
     "start": "next start",
     "lint": "next lint"
   },
