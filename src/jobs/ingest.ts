@@ -6,7 +6,7 @@ import IORedis from 'ioredis';
 
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
 
-const BATCH_SIZE = 1000; // use COPY in production for max throughput
+const BATCH_SIZE = 1000;
 
 function parseCSV(csvData: string): any[] {
   const lines = csvData.trim().split('\n');
@@ -19,142 +19,179 @@ function parseCSV(csvData: string): any[] {
     headers.forEach((header, index) => {
       const value = values[index] || '';
       
-      // Map common CSV headers to expected fields
-      switch (header.toLowerCase()) {
-        case 'timestamp':
-        case 'ts':
-        case 'time':
+      // Map Omaha CSV headers to expected fields
+      switch (header) {
+        case 'Utc Time':
           row.ts = value;
           break;
-        case 'zone':
-        case 'location':
-          row.zone = value;
+        case 'Lane Type':
+          // Map Lane Type to direction
+          row.direction = value.toUpperCase() === 'IN' ? 'IN' : 
+                         value.toUpperCase() === 'OUT' ? 'OUT' : value.toUpperCase();
           break;
-        case 'direction':
-        case 'dir':
-          row.direction = value.toUpperCase();
-          break;
-        case 'plate':
-        case 'license_plate':
-        case 'plate_raw':
+        case 'License Plate':
           row.plate_raw = value;
           row.plate_norm = value.replace(/[^A-Z0-9]/g, '').toUpperCase();
-          row.plate_norm_fuzzy = row.plate_norm.replace(/[O0IL1S5]/g, (m: string) => 
-            ({O:'0', '0':'0', I:'1', L:'1', '1':'1', S:'5', '5':'5'})[m]
-          );
+          // Fix fuzzy normalization with proper types
+          const replacements: {[key: string]: string} = {
+            'O': '0', '0': '0', 'I': '1', 'L': '1', '1': '1', 'S': '5', '5': '5'
+          };
+          row.plate_norm_fuzzy = row.plate_norm.replace(/[O0IL1S5]/g, (m: string) => replacements[m]);
           break;
-        case 'state':
-        case 'state_raw':
-          row.state_raw = value;
-          row.state_norm = value.toUpperCase();
+        case 'Zone':
+          row.zone = value || 'DEFAULT';
           break;
-        case 'camera':
-        case 'camera_id':
+        case 'Camera Id':
           row.camera_id = value;
-          break;
-        case 'quality':
-          row.quality = parseFloat(value) || 0;
           break;
         default:
           row[header] = value;
       }
     });
     
-    // Set default values if missing
+    // Generate dupe key
     row.dupe_key = `${row.zone}_${row.ts}_${row.plate_norm}_${row.direction}`;
-    row.raw = row.raw || {};
+    row.raw = {};
+    
+    // Set default values
+    row.state_raw = row.state_raw || '';
+    row.state_norm = row.state_norm || '';
+    row.quality = row.quality || 0;
     
     return row;
   });
 }
 
 export default new Worker('ingest', async job => {
-  let { uploadId, rows, csvData } = job.data as { uploadId: string, rows?: any[], csvData?: string };
+  console.log(`Processing job ${job.id} - ${job.name}`);
   
-  // If CSV data is provided, parse it first
-  if (csvData && !rows) {
-    rows = parseCSV(csvData);
+  let { uploadId, csvData } = job.data as { uploadId: string, csvData?: string };
+  
+  if (!csvData) {
+    throw new Error('No CSV data provided');
   }
   
-  if (!rows || rows.length === 0) {
-    throw new Error('No data provided for ingestion');
-  }
-
-  // Filter out rows with invalid timestamps early
+  console.log(`Parsing CSV data for upload ${uploadId}`);
+  const rows = parseCSV(csvData);
+  
+  // Filter out invalid rows
   const validRows = rows.filter(r => {
-    if (!r.ts || r.ts.trim() === '') {
-      console.warn('Skipping row with missing timestamp:', r);
+    if (!r.ts || !r.direction || !r.plate_raw) {
+      console.warn('Skipping invalid row:', r);
       return false;
     }
     
     const date = new Date(r.ts);
     if (isNaN(date.getTime())) {
-      console.warn('Skipping row with invalid timestamp:', r.ts, 'in row:', r);
+      console.warn('Invalid timestamp:', r.ts);
+      return false;
+    }
+    
+    if (r.direction !== 'IN' && r.direction !== 'OUT') {
+      console.warn('Invalid direction:', r.direction);
       return false;
     }
     
     return true;
   });
-
+  
+  console.log(`Processing ${validRows.length} valid rows out of ${rows.length} total`);
+  
   if (validRows.length === 0) {
-    throw new Error('No valid data rows with timestamps found');
+    await pool.query(
+      'UPDATE uploads SET status=$1, error_log=$2, completed_at=NOW() WHERE id=$3',
+      ['ERROR', 'No valid rows found in CSV', uploadId]
+    );
+    throw new Error('No valid rows to process');
   }
-
-  console.log(`Processing ${validRows.length} valid rows out of ${rows.length} total rows`);
-
-  // 1) Ensure partitions for months in file
+  
+  // Ensure partitions exist
   const months = new Set<string>();
   for (const r of validRows) {
-    months.add(new Date(r.ts).toISOString().slice(0,7)+'-01T00:00:00Z');
+    const monthStr = new Date(r.ts).toISOString().slice(0, 7) + '-01T00:00:00Z';
+    months.add(monthStr);
   }
-  for (const m of Array.from(months)) await pool.query('SELECT ensure_events_partition($1::timestamptz);', [m]);
-
-  // 2) Batched inserts with proper status values (placeholder for COPY)
+  
+  console.log(`Creating partitions for months: ${Array.from(months).join(', ')}`);
+  for (const m of Array.from(months)) {
+    await pool.query('SELECT ensure_events_partition($1::timestamptz)', [m]);
+  }
+  
+  let totalInserted = 0;
+  
+  // Process in batches
   for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
     const batch = validRows.slice(i, i + BATCH_SIZE);
-    const text = `INSERT INTO events(ts,zone,direction,plate_raw,plate_norm,plate_norm_fuzzy,state_raw,state_norm,camera_id,upload_id,quality,dupe_key,raw,status)
-                  VALUES ${batch.map((_, j) => `($${j*14+1},$${j*14+2},$${j*14+3},$${j*14+4},$${j*14+5},$${j*14+6},$${j*14+7},$${j*14+8},$${j*14+9},$${j*14+10},$${j*14+11},$${j*14+12},$${j*14+13},$${j*14+14})`).join(',')}
-                  ON CONFLICT (zone, dupe_key) DO NOTHING
-                  RETURNING id, ts, zone, direction, plate_norm, plate_norm_fuzzy, state_norm, status;`;
+    
+    // Build batch insert query
+    const placeholders: string[] = [];
     const values: any[] = [];
+    let paramIndex = 1;
+    
     for (const r of batch) {
       const status = r.direction === 'IN' ? 'OPEN' : 'ORPHAN_OPEN';
-      values.push(r.ts, r.zone, r.direction, r.plate_raw, r.plate_norm, r.plate_norm_fuzzy, r.state_raw, r.state_norm, r.camera_id, uploadId, r.quality, r.dupe_key, r.raw ?? {}, status);
+      placeholders.push(`($${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++})`);
+      values.push(
+        r.ts, r.zone, r.direction, r.plate_raw, r.plate_norm, r.plate_norm_fuzzy,
+        r.state_raw, r.state_norm, r.camera_id, uploadId, r.quality,
+        r.dupe_key, JSON.stringify(r.raw), status
+      );
     }
-    const res = await pool.query(text, values);
-
-    // 3) Queue each OUT for individual pairing using pair_out_event_v2
-    const outs = res.rows.filter((r: any) => r.direction === 'OUT');
-    for (const out of outs) {
-      await pairQ.add('pair-out-event', { outId: out.id }, {
+    
+    const insertQuery = `
+      INSERT INTO events(ts,zone,direction,plate_raw,plate_norm,plate_norm_fuzzy,
+                        state_raw,state_norm,camera_id,upload_id,quality,
+                        dupe_key,raw,status)
+      VALUES ${placeholders.join(',')}
+      ON CONFLICT (zone, dupe_key) DO NOTHING
+      RETURNING id, direction, zone
+    `;
+    
+    const result = await pool.query(insertQuery, values);
+    totalInserted += result.rows.length;
+    
+    console.log(`Batch ${Math.floor(i/BATCH_SIZE) + 1}: Inserted ${result.rows.length} events`);
+    
+    // Queue OUT events for pairing
+    const outEvents = result.rows.filter(r => r.direction === 'OUT');
+    for (const out of outEvents) {
+      await pairQ.add('pair-out', { outId: out.id }, {
         removeOnComplete: true,
         removeOnFail: true,
       });
     }
-
-    // 4) Seed open_entries for INs (include plate_norm_fuzzy for fuzzy prefiltering)
-    const ins = res.rows.filter((r: any) => r.direction === 'IN');
-    if (ins.length) {
-      const text2 = `INSERT INTO open_entries(entry_event_id,zone,plate_norm,state_norm,ts,plate_norm_fuzzy)
-                     VALUES ${ins.map((_, k) => `($${k*6+1},$${k*6+2},$${k*6+3},$${k*6+4},$${k*6+5},$${k*6+6})`).join(',')}
-                     ON CONFLICT DO NOTHING;`;
-      const vals2: any[] = [];
-      for (const r of ins) vals2.push(r.id, r.zone, r.plate_norm, r.state_norm, r.ts, r.plate_norm_fuzzy);
-      await pool.query(text2, vals2);
-    }
+    
+    // Update progress
+    await pool.query(
+      'UPDATE uploads SET rows_loaded=$1 WHERE id=$2',
+      [totalInserted, uploadId]
+    );
   }
-
-  // 5) After ingest: enqueue delayed sweep for orphans in affected zones
-  const zones = Array.from(new Set(rows.map((r: any) => r.zone)));
-  for (let i = 0; i < zones.length; i++) {
-    const zone = zones[i];
-    await fuzzyQ.add('sweep-orphans', { zone, maxPairs: 1000 }, {
-      delay: 5000,            // start 5s later
+  
+  // Mark upload as completed
+  await pool.query(
+    'UPDATE uploads SET status=$1, rows_loaded=$2, completed_at=NOW() WHERE id=$3',
+    ['COMPLETED', totalInserted, uploadId]
+  );
+  
+  // Queue fuzzy matching for the zones
+  const zones = Array.from(new Set(validRows.map(r => r.zone)));
+  for (const zone of zones) {
+    await fuzzyQ.add('sweep-zone', { zone }, {
+      delay: 5000,
       removeOnComplete: true,
       removeOnFail: true,
     });
   }
+  
+  console.log(`✅ Upload ${uploadId} completed: ${totalInserted} events inserted`);
+  
+  return { uploadId, eventsInserted: totalInserted };
 }, {
   connection,
-  concurrency: 1  // single worker for ingest
+  concurrency: 1,
+  limiter: {
+    max: 1,
+    duration: 1000
+  }
 });

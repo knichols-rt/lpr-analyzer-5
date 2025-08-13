@@ -80,41 +80,42 @@ export default function Dashboard() {
           const data = await response.json()
           setMetrics(data)
         } else {
-          // Mock data for development
+          console.error('Failed to fetch metrics data')
+          // Initialize with zeros if API fails
           setMetrics({
-            totalEvents: 15420,
-            totalSessions: 7832,
+            totalEvents: 0,
+            totalSessions: 0,
             sessionTypes: {
-              exact: 6890,
-              stateMismatch: 412,
-              overnight: 234,
-              multiday: 156,
-              fuzzyAccepted: 140
+              exact: 0,
+              stateMismatch: 0,
+              overnight: 0,
+              multiday: 0,
+              fuzzyAccepted: 0
             },
             orphans: {
-              openIn: 89,
-              openOut: 76,
-              expired: 23
+              openIn: 0,
+              openOut: 0,
+              expired: 0
             }
           })
         }
       } catch (error) {
         console.error('Failed to fetch metrics:', error)
-        // Mock data fallback
+        // Initialize with zeros if error occurs
         setMetrics({
-          totalEvents: 15420,
-          totalSessions: 7832,
+          totalEvents: 0,
+          totalSessions: 0,
           sessionTypes: {
-            exact: 6890,
-            stateMismatch: 412,
-            overnight: 234,
-            multiday: 156,
-            fuzzyAccepted: 140
+            exact: 0,
+            stateMismatch: 0,
+            overnight: 0,
+            multiday: 0,
+            fuzzyAccepted: 0
           },
           orphans: {
-            openIn: 89,
-            openOut: 76,
-            expired: 23
+            openIn: 0,
+            openOut: 0,
+            expired: 0
           }
         })
       }

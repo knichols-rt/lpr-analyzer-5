@@ -359,15 +359,8 @@ export default function CsvUploader({}: CsvUploaderProps) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            tenantId: 'default', // TODO: Get from auth
-            csvMeta: {
-              filename: file.name,
-              size: file.size,
-              mapping: columnMapping,
-              timezone,
-              zoneScope,
-              singleZone: zoneScope === 'single' ? singleZone : undefined
-            }
+            filename: file.name,
+            bytes: file.size
           })
         });
 
@@ -375,23 +368,28 @@ export default function CsvUploader({}: CsvUploaderProps) {
           throw new Error('Failed to initialize upload');
         }
 
-        const { uploadId: singleUploadId, putUrl } = await initResponse.json();
+        const { uploadId: singleUploadId } = await initResponse.json();
         uploadId = singleUploadId;
         
         setUploadState(prev => ({ ...prev, uploadId }));
 
-        // Simulate single file upload progress
-        const progressInterval = setInterval(() => {
-          setUploadState(prev => ({
-            ...prev,
-            progress: Math.min(prev.progress + Math.random() * 20, 90)
-          }));
-        }, 500);
-
-        // In a real implementation, this would upload to the presigned URL
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Upload file as single chunk
+        const formData = new FormData();
+        formData.append('uploadId', uploadId);
+        formData.append('chunkIndex', '0');
+        formData.append('totalChunks', '1');
+        formData.append('chunk', uploadState.file!);
         
-        clearInterval(progressInterval);
+        const chunkResponse = await fetch('/api/uploads/chunk', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!chunkResponse.ok) {
+          throw new Error('Failed to upload file');
+        }
+        
+        setUploadState(prev => ({ ...prev, progress: 90 }));
       }
       
       // Complete upload

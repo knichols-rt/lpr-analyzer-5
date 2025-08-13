@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { pool } from '../../../lib/db'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,50 +13,70 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const pageSize = parseInt(searchParams.get('pageSize') || '100')
 
-    // Generate mock events data
-    const mockEvents = Array.from({ length: 2000 }, (_, i) => ({
-      id: `event-${i + 1}`,
-      plate: `ABC${String(i + 100).padStart(3, '0')}`,
-      state: Math.random() > 0.8 ? 'NY' : 'CA',
-      zone: `ZONE_${String.fromCharCode(65 + (i % 3))}`,
-      time: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-      direction: Math.random() > 0.5 ? 'IN' : 'OUT',
-      camera: `CAM_${(i % 10) + 1}_${Math.random() > 0.5 ? 'IN' : 'OUT'}`,
-      quality: Math.random() * 0.4 + 0.6,
-      uploadId: `upload-${String(i % 100).padStart(3, '0')}`
+    // Build the query
+    let whereConditions = []
+    let queryParams = []
+    let paramIndex = 1
+
+    // Date filtering
+    if (from) {
+      whereConditions.push(`ts >= $${paramIndex}`)
+      queryParams.push(from)
+      paramIndex++
+    }
+    if (to) {
+      whereConditions.push(`ts <= $${paramIndex}`)
+      queryParams.push(to)
+      paramIndex++
+    }
+
+    // Zone filtering
+    if (zones.length > 0) {
+      whereConditions.push(`zone = ANY($${paramIndex})`)
+      queryParams.push(zones)
+      paramIndex++
+    }
+
+    // Direction filtering
+    if (direction) {
+      whereConditions.push(`direction = $${paramIndex}`)
+      queryParams.push(direction)
+      paramIndex++
+    }
+
+    // Search filtering
+    if (search) {
+      whereConditions.push(`(plate ILIKE $${paramIndex} OR state ILIKE $${paramIndex} OR camera ILIKE $${paramIndex})`)
+      queryParams.push(`%${search}%`)
+      paramIndex++
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''
+
+    // Get total count
+    const countQuery = `SELECT COUNT(*) as total FROM events ${whereClause}`
+    const countResult = await pool.query(countQuery, queryParams)
+    const total = parseInt(countResult.rows[0]?.total || '0')
+
+    // Get paginated data
+    const offset = (page - 1) * pageSize
+    const dataQuery = `
+      SELECT id, plate, state, zone, ts as time, direction, camera, quality, upload_id as "uploadId"
+      FROM events 
+      ${whereClause}
+      ORDER BY ts DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `
+    queryParams.push(pageSize, offset)
+
+    const eventsResult = await pool.query(dataQuery, queryParams)
+    const events = eventsResult.rows.map(row => ({
+      ...row,
+      time: row.time.toISOString()
     }))
 
-    // Apply filters
-    let filteredEvents = mockEvents
-
-    if (search) {
-      filteredEvents = filteredEvents.filter(event => 
-        event.plate.toLowerCase().includes(search.toLowerCase()) ||
-        event.state.toLowerCase().includes(search.toLowerCase()) ||
-        event.camera.toLowerCase().includes(search.toLowerCase())
-      )
-    }
-
-    if (direction) {
-      filteredEvents = filteredEvents.filter(event => 
-        event.direction === direction
-      )
-    }
-
-    if (zones.length > 0) {
-      filteredEvents = filteredEvents.filter(event => 
-        zones.includes(event.zone)
-      )
-    }
-
-    // Sort by time (most recent first)
-    filteredEvents.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-
-    // Pagination
-    const total = filteredEvents.length
-    const startIndex = (page - 1) * pageSize
-    const endIndex = startIndex + pageSize
-    const paginatedEvents = filteredEvents.slice(startIndex, endIndex)
+    // Pagination info
+    const totalPages = Math.ceil(total / pageSize)
 
     const response = {
       data: paginatedEvents,
