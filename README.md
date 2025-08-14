@@ -155,9 +155,25 @@ lpr-analyzer-5/
 ## Next Steps
 
 ### Worker Implementation (Appendix B)
-- Implement TypeScript + BullMQ workers
-- Add fuzzy matching worker (Appendix T)
-- Set up Redis for queue management
+✅ **COMPLETED** - Full TypeScript + BullMQ worker infrastructure implemented:
+- **Ingest Worker** (`src/jobs/ingest.ts`) - CSV data processing with duplicate handling
+- **Pair Worker** (`src/jobs/pair.ts`) - Event pairing logic for IN/OUT matching
+- **Fuzzy Worker** (`src/jobs/fuzzy.ts`) - Fuzzy plate matching with scoring
+- **Expire Worker** (`src/jobs/expire.ts`) - Analytics refresh and session expiration
+- **Queue Management** (`src/queues.ts`) - Redis-backed BullMQ queues with TypeScript interfaces
+- **Database Layer** (`src/db.ts`) - Centralized PostgreSQL connection pool
+
+**Running Workers:**
+```bash
+# Development mode (with live reload)
+npm run workers:dev
+
+# Production mode (compiled)
+npm run build && npm run workers
+
+# Manual start via shell script
+./start-workers.sh
+```
 
 ### Dashboard Frontend
 - Implement read-only dashboard per Front-End Scope
@@ -183,4 +199,4 @@ After setup completion:
 
 **Implementation Status**: ✅ **COMPLETE**  
 **Specification Compliance**: **100% Appendix S**  
-**Ready for Production**: **YES** (pending worker implementation)
+**Ready for Production**: **YES**

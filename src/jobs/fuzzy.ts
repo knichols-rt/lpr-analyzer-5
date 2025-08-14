@@ -1,6 +1,7 @@
 // src/jobs/fuzzy.ts
 import { Worker } from 'bullmq';
 import { pool } from '../db';
+import { FuzzyJobData } from '../queues';
 import IORedis from 'ioredis';
 
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
@@ -32,7 +33,8 @@ LIMIT 5000;
 `;
 
 export default new Worker('fuzzy', async job => {
-  const { zone, minScore = 0.95 } = job.data as { zone: string; minScore?: number };
+  const { zone, minScore = 0.95 } = job.data as FuzzyJobData;
+  console.log(`Processing fuzzy matching job ${job.id} for zone ${zone} with minScore ${minScore}`);
   const { rows: pairs } = await pool.query(prefilterSQL, [zone]);
 
   // group by IN and OUT to enforce uniqueness among high-scorers

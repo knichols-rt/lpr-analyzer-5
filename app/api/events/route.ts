@@ -40,7 +40,7 @@ export async function GET(request: Request) {
       params.push(status);
     }
     
-    if (zone) {
+    if (zone && zone !== 'all') {
       query += ` AND zone = $${++paramCount}`;
       params.push(zone);
     }

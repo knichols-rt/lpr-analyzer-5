@@ -1,7 +1,7 @@
 // src/jobs/ingest.ts - Fixed version that handles duplicates properly
 import { Worker } from 'bullmq';
 import { pool } from '../db';
-import { pairQ, fuzzyQ } from '../queues';
+import { pairQ, fuzzyQ, IngestJobData } from '../queues';
 import IORedis from 'ioredis';
 
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
@@ -63,7 +63,7 @@ function parseCSV(csvData: string): any[] {
 export default new Worker('ingest', async job => {
   console.log(`Processing job ${job.id} - ${job.name}`);
   
-  let { uploadId, csvData } = job.data as { uploadId: string, csvData?: string };
+  let { uploadId, csvData } = job.data as IngestJobData;
   
   if (!csvData) {
     throw new Error('No CSV data provided');

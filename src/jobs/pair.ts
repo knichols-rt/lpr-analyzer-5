@@ -1,12 +1,14 @@
 // src/jobs/pair.ts
 import { Worker } from 'bullmq';
 import { pool } from '../db';
+import { PairJobData } from '../queues';
 import IORedis from 'ioredis';
 
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
 
 export default new Worker('pair', async job => {
-  const { outId } = job.data as { outId: number };
+  const { outId } = job.data as PairJobData;
+  console.log(`Processing pair job ${job.id} for OUT event ${outId}`);
   await pool.query('SELECT pair_out_event_v2($1);', [outId]);
 }, {
   connection,

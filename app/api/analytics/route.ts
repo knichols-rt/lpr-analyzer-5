@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     `;
     
     const params: any[] = [];
-    if (zone) {
+    if (zone && zone !== 'all') {
       dailyQuery += ` AND zone = $1`;
       params.push(zone);
     }

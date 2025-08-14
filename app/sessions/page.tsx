@@ -11,8 +11,8 @@ import { Search } from 'lucide-react';
 export default function SessionsPage() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchPlate, setSearchPlate] = useState('');
-  const [searchZone, setSearchZone] = useState('');
+  const [searchPlate, setSearchPlate] = useState('all');
+  const [searchZone, setSearchZone] = useState('all');
   const [pagination, setPagination] = useState({
     limit: 100,
     offset: 0,

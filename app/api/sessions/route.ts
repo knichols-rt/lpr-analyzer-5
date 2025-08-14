@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     const params: any[] = [];
     let paramCount = 0;
     
-    if (zone) {
+    if (zone && zone !== 'all') {
       query += ` AND s.zone = $${++paramCount}`;
       params.push(zone);
     }
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     const countParams: any[] = [];
     paramCount = 0;
     
-    if (zone) {
+    if (zone && zone !== 'all') {
       countQuery += ` AND s.zone = $${++paramCount}`;
       countParams.push(zone);
     }
