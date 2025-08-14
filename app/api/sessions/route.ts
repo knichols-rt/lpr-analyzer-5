@@ -1,90 +1,86 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
+import { pool } from '@/lib/db';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url)
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
-    const zones = searchParams.get('zones')?.split(',').filter(Boolean) || []
-    const type = searchParams.get('type')
-    const flags = searchParams.get('flags')?.split(',').filter(Boolean) || []
-    const search = searchParams.get('search')
-    const sort = searchParams.get('sort') || 'entryTime'
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '100')
-
-    // Generate mock sessions data
-    const mockSessions = Array.from({ length: 1000 }, (_, i) => ({
-      id: `session-${i + 1}`,
-      plate: `ABC${String(i + 100).padStart(3, '0')}`,
-      entryState: Math.random() > 0.8 ? 'NY' : 'CA',
-      exitState: Math.random() > 0.9 ? 'NY' : 'CA',
-      zone: `ZONE_${String.fromCharCode(65 + (i % 3))}`,
-      entryTime: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-      exitTime: new Date(Date.now() - Math.random() * 6 * 24 * 60 * 60 * 1000).toISOString(),
-      duration: Math.floor(Math.random() * 480) + 30,
-      matchType: ['EXACT', 'STATE_MISMATCH', 'FUZZY_ACCEPTED'][Math.floor(Math.random() * 3)],
-      flags: Math.random() > 0.8 ? ['OVERNIGHT'] : Math.random() > 0.9 ? ['MULTIDAY'] : [],
-      confidence: Math.random() * 0.3 + 0.7,
-      billingAmount: Math.floor(Math.random() * 50) + 5,
-      entryCamera: `CAM_${i % 10 + 1}_IN`,
-      exitCamera: `CAM_${i % 10 + 1}_OUT`,
-      uploadId: `upload-${String(i % 50).padStart(3, '0')}`
-    }))
-
-    // Apply filters
-    let filteredSessions = mockSessions
-
-    if (search) {
-      filteredSessions = filteredSessions.filter(session => 
-        session.plate.toLowerCase().includes(search.toLowerCase())
-      )
+    const { searchParams } = new URL(request.url);
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = parseInt(searchParams.get('offset') || '0');
+    const zone = searchParams.get('zone');
+    const plate = searchParams.get('plate');
+    
+    let query = `
+      SELECT 
+        s.id,
+        s.zone,
+        s.entry_event_id,
+        s.exit_event_id,
+        s.plate_norm,
+        s.state_entry,
+        s.state_exit,
+        s.entry_ts,
+        s.exit_ts,
+        s.duration_minutes,
+        s.match_type,
+        s.match_method,
+        s.confidence_score,
+        s.billing_amount,
+        s.flags
+      FROM sessions s
+      WHERE 1=1
+    `;
+    
+    const params: any[] = [];
+    let paramCount = 0;
+    
+    if (zone) {
+      query += ` AND s.zone = $${++paramCount}`;
+      params.push(zone);
     }
-
-    if (type) {
-      filteredSessions = filteredSessions.filter(session => 
-        session.matchType === type
-      )
+    
+    if (plate) {
+      query += ` AND s.plate_norm LIKE $${++paramCount}`;
+      params.push(`%${plate.toUpperCase()}%`);
     }
-
-    if (zones.length > 0) {
-      filteredSessions = filteredSessions.filter(session => 
-        zones.includes(session.zone)
-      )
+    
+    query += ` ORDER BY s.entry_ts DESC`;
+    query += ` LIMIT $${++paramCount} OFFSET $${++paramCount}`;
+    params.push(limit, offset);
+    
+    const result = await pool.query(query, params);
+    
+    // Get total count for pagination
+    let countQuery = `SELECT COUNT(*) FROM sessions s WHERE 1=1`;
+    const countParams: any[] = [];
+    paramCount = 0;
+    
+    if (zone) {
+      countQuery += ` AND s.zone = $${++paramCount}`;
+      countParams.push(zone);
     }
-
-    // Pagination
-    const total = filteredSessions.length
-    const startIndex = (page - 1) * pageSize
-    const endIndex = startIndex + pageSize
-    const paginatedSessions = filteredSessions.slice(startIndex, endIndex)
-
-    const response = {
-      data: paginatedSessions,
+    
+    if (plate) {
+      countQuery += ` AND s.plate_norm LIKE $${++paramCount}`;
+      countParams.push(`%${plate.toUpperCase()}%`);
+    }
+    
+    const countResult = await pool.query(countQuery, countParams);
+    const total = parseInt(countResult.rows[0].count);
+    
+    return NextResponse.json({
+      sessions: result.rows,
       pagination: {
-        page,
-        pageSize,
         total,
-        totalPages: Math.ceil(total / pageSize)
-      },
-      meta: {
-        from,
-        to,
-        zones,
-        type,
-        flags,
-        search,
-        sort,
-        generatedAt: new Date().toISOString()
+        limit,
+        offset,
+        hasMore: offset + limit < total
       }
-    }
-
-    return NextResponse.json(response)
+    });
   } catch (error) {
-    console.error('Error in sessions API:', error)
+    console.error('Error fetching sessions:', error);
     return NextResponse.json(
       { error: 'Failed to fetch sessions' },
       { status: 500 }
-    )
+    );
   }
 }

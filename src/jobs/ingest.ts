@@ -1,4 +1,4 @@
-// src/jobs/ingest.ts
+// src/jobs/ingest.ts - Fixed version that handles duplicates properly
 import { Worker } from 'bullmq';
 import { pool } from '../db';
 import { pairQ, fuzzyQ } from '../queues';
@@ -6,7 +6,7 @@ import IORedis from 'ioredis';
 
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
 
-const BATCH_SIZE = 1000;
+const BATCH_SIZE = 100;
 
 function parseCSV(csvData: string): any[] {
   const lines = csvData.trim().split('\n');
@@ -25,14 +25,12 @@ function parseCSV(csvData: string): any[] {
           row.ts = value;
           break;
         case 'Lane Type':
-          // Map Lane Type to direction
           row.direction = value.toUpperCase() === 'IN' ? 'IN' : 
                          value.toUpperCase() === 'OUT' ? 'OUT' : value.toUpperCase();
           break;
         case 'License Plate':
           row.plate_raw = value;
           row.plate_norm = value.replace(/[^A-Z0-9]/g, '').toUpperCase();
-          // Fix fuzzy normalization with proper types
           const replacements: {[key: string]: string} = {
             'O': '0', '0': '0', 'I': '1', 'L': '1', '1': '1', 'S': '5', '5': '5'
           };
@@ -74,24 +72,18 @@ export default new Worker('ingest', async job => {
   console.log(`Parsing CSV data for upload ${uploadId}`);
   const rows = parseCSV(csvData);
   
-  // Filter out invalid rows
+  // Filter and validate rows
   const validRows = rows.filter(r => {
     if (!r.ts || !r.direction || !r.plate_raw) {
-      console.warn('Skipping invalid row:', r);
       return false;
     }
-    
     const date = new Date(r.ts);
     if (isNaN(date.getTime())) {
-      console.warn('Invalid timestamp:', r.ts);
       return false;
     }
-    
     if (r.direction !== 'IN' && r.direction !== 'OUT') {
-      console.warn('Invalid direction:', r.direction);
       return false;
     }
-    
     return true;
   });
   
@@ -118,80 +110,146 @@ export default new Worker('ingest', async job => {
   }
   
   let totalInserted = 0;
+  let totalDuplicates = 0;
+  let totalErrors = 0;
+  const errors: string[] = [];
   
-  // Process in batches
+  // DON'T use a transaction - process each batch independently
+  // This way successful batches are saved even if others fail
+  
   for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
     const batch = validRows.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(validRows.length / BATCH_SIZE);
     
-    // Build batch insert query
-    const placeholders: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
-    
-    for (const r of batch) {
-      const status = r.direction === 'IN' ? 'OPEN' : 'ORPHAN_OPEN';
-      placeholders.push(`($${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++},$${paramIndex++})`);
-      values.push(
-        r.ts, r.zone, r.direction, r.plate_raw, r.plate_norm, r.plate_norm_fuzzy,
-        r.state_raw, r.state_norm, r.camera_id, uploadId, r.quality,
-        r.dupe_key, JSON.stringify(r.raw), status
-      );
+    try {
+      // Process each row individually to handle duplicates properly
+      let batchInserted = 0;
+      let batchDuplicates = 0;
+      
+      for (const r of batch) {
+        const status = r.direction === 'IN' ? 'OPEN' : 'ORPHAN_OPEN';
+        
+        try {
+          // Insert single row with explicit duplicate check
+          const result = await pool.query(`
+            INSERT INTO events(ts,zone,direction,plate_raw,plate_norm,plate_norm_fuzzy,
+                              state_raw,state_norm,camera_id,upload_id,quality,
+                              dupe_key,raw,status)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            ON CONFLICT DO NOTHING
+            RETURNING id, direction
+          `, [
+            r.ts,
+            r.zone,
+            r.direction,
+            r.plate_raw,
+            r.plate_norm,
+            r.plate_norm_fuzzy,
+            r.state_raw || null,
+            r.state_norm || null,
+            r.camera_id || null,
+            uploadId,
+            r.quality || 0,
+            r.dupe_key,
+            JSON.stringify(r.raw || {}),
+            status
+          ]);
+          
+          if (result.rows.length > 0) {
+            batchInserted++;
+            totalInserted++;
+            
+            // Queue OUT events for pairing
+            if (result.rows[0].direction === 'OUT') {
+              pairQ.add('pair-out', { outId: result.rows[0].id }, {
+                removeOnComplete: true,
+                removeOnFail: true,
+              }).catch(console.error);
+            }
+          } else {
+            // ON CONFLICT triggered - this is a duplicate
+            batchDuplicates++;
+            totalDuplicates++;
+          }
+          
+        } catch (rowError: any) {
+          // Check if it's a duplicate key error
+          if (rowError.code === '23505') {
+            batchDuplicates++;
+            totalDuplicates++;
+          } else {
+            console.error(`Row error: ${rowError.message}`);
+            totalErrors++;
+            if (errors.length < 10) {
+              errors.push(`Row error: ${rowError.message}`);
+            }
+          }
+        }
+      }
+      
+      // Log batch progress
+      if (batchNum % 10 === 0 || batchNum === totalBatches) {
+        console.log(`Batch ${batchNum}/${totalBatches}: ${batchInserted} inserted, ${batchDuplicates} duplicates`);
+        console.log(`Total progress: ${totalInserted} inserted, ${totalDuplicates} duplicates, ${totalErrors} errors`);
+        
+        // Update progress in database
+        await pool.query(
+          'UPDATE uploads SET rows_loaded=$1 WHERE id=$2',
+          [totalInserted, uploadId]
+        ).catch(console.error);
+      }
+      
+    } catch (batchError: any) {
+      console.error(`Fatal error in batch ${batchNum}: ${batchError.message}`);
+      totalErrors += batch.length;
+      if (errors.length < 10) {
+        errors.push(`Batch ${batchNum} error: ${batchError.message}`);
+      }
     }
-    
-    const insertQuery = `
-      INSERT INTO events(ts,zone,direction,plate_raw,plate_norm,plate_norm_fuzzy,
-                        state_raw,state_norm,camera_id,upload_id,quality,
-                        dupe_key,raw,status)
-      VALUES ${placeholders.join(',')}
-      ON CONFLICT (zone, dupe_key) DO NOTHING
-      RETURNING id, direction, zone
-    `;
-    
-    const result = await pool.query(insertQuery, values);
-    totalInserted += result.rows.length;
-    
-    console.log(`Batch ${Math.floor(i/BATCH_SIZE) + 1}: Inserted ${result.rows.length} events`);
-    
-    // Queue OUT events for pairing
-    const outEvents = result.rows.filter(r => r.direction === 'OUT');
-    for (const out of outEvents) {
-      await pairQ.add('pair-out', { outId: out.id }, {
+  }
+  
+  // Final status update
+  const finalStatus = totalInserted > 0 ? 'COMPLETED' : 'ERROR';
+  const errorLog = errors.length > 0 ? errors.join('; ') : null;
+  
+  await pool.query(
+    `UPDATE uploads 
+     SET status=$1, rows_loaded=$2, error_log=$3, completed_at=NOW() 
+     WHERE id=$4`,
+    [finalStatus, totalInserted, errorLog, uploadId]
+  );
+  
+  // Queue fuzzy matching for affected zones (only if we inserted something)
+  if (totalInserted > 0) {
+    const zones = Array.from(new Set(validRows.map(r => r.zone)));
+    for (const zone of zones) {
+      await fuzzyQ.add('sweep-zone', { zone }, {
+        delay: 5000,
         removeOnComplete: true,
         removeOnFail: true,
       });
     }
-    
-    // Update progress
-    await pool.query(
-      'UPDATE uploads SET rows_loaded=$1 WHERE id=$2',
-      [totalInserted, uploadId]
-    );
   }
   
-  // Mark upload as completed
-  await pool.query(
-    'UPDATE uploads SET status=$1, rows_loaded=$2, completed_at=NOW() WHERE id=$3',
-    ['COMPLETED', totalInserted, uploadId]
-  );
+  console.log(`
+    ✅ Upload ${uploadId} processing complete:
+    - Total rows processed: ${validRows.length}
+    - Successfully inserted: ${totalInserted}
+    - Duplicates skipped: ${totalDuplicates}
+    - Errors: ${totalErrors}
+    - Success rate: ${((totalInserted / validRows.length) * 100).toFixed(2)}%
+  `);
   
-  // Queue fuzzy matching for the zones
-  const zones = Array.from(new Set(validRows.map(r => r.zone)));
-  for (const zone of zones) {
-    await fuzzyQ.add('sweep-zone', { zone }, {
-      delay: 5000,
-      removeOnComplete: true,
-      removeOnFail: true,
-    });
-  }
+  return { 
+    uploadId, 
+    eventsInserted: totalInserted, 
+    duplicatesSkipped: totalDuplicates,
+    errors: totalErrors,
+    totalRows: validRows.length 
+  };
   
-  console.log(`✅ Upload ${uploadId} completed: ${totalInserted} events inserted`);
-  
-  return { uploadId, eventsInserted: totalInserted };
 }, {
   connection,
-  concurrency: 1,
-  limiter: {
-    max: 1,
-    duration: 1000
-  }
+  concurrency: 1
 });

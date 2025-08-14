@@ -1,101 +1,67 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server';
+import { pool } from '@/lib/db';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url)
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
-    const zones = searchParams.get('zones')?.split(',').filter(Boolean) || []
-    const status = searchParams.get('status')
-    const direction = searchParams.get('direction')
-    const search = searchParams.get('search')
-    const sort = searchParams.get('sort') || 'time'
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '100')
-
-    // Generate mock orphans data
-    const mockOrphans = Array.from({ length: 500 }, (_, i) => {
-      const age = Math.floor(Math.random() * 2000) + 30 // 30 minutes to ~33 hours
-      const orphanStatus = age > 720 ? 'EXPIRED' : 'OPEN' // Expired after 12 hours
-      
-      return {
-        id: `orphan-${i + 1}`,
-        plate: `XYZ${String(i + 200).padStart(3, '0')}`,
-        state: Math.random() > 0.8 ? 'NY' : 'CA',
-        zone: `ZONE_${String.fromCharCode(65 + (i % 3))}`,
-        time: new Date(Date.now() - age * 60 * 1000).toISOString(),
-        direction: Math.random() > 0.5 ? 'IN' : 'OUT',
-        age,
-        camera: `CAM_${(i % 10) + 1}_${Math.random() > 0.5 ? 'IN' : 'OUT'}`,
-        quality: Math.random() * 0.4 + 0.6,
-        status: orphanStatus
-      }
-    })
-
-    // Apply filters
-    let filteredOrphans = mockOrphans
-
-    if (search) {
-      filteredOrphans = filteredOrphans.filter(orphan => 
-        orphan.plate.toLowerCase().includes(search.toLowerCase()) ||
-        orphan.state.toLowerCase().includes(search.toLowerCase()) ||
-        orphan.camera.toLowerCase().includes(search.toLowerCase())
-      )
+    const { searchParams } = new URL(request.url);
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = parseInt(searchParams.get('offset') || '0');
+    const type = searchParams.get('type'); // 'expired' or 'open'
+    
+    let statusFilter = '';
+    if (type === 'expired') {
+      statusFilter = `AND status = 'ORPHAN_EXPIRED'`;
+    } else if (type === 'open') {
+      statusFilter = `AND status = 'ORPHAN_OPEN'`;
+    } else {
+      statusFilter = `AND status IN ('ORPHAN_EXPIRED', 'ORPHAN_OPEN')`;
     }
-
-    if (status) {
-      filteredOrphans = filteredOrphans.filter(orphan => 
-        orphan.status === status
-      )
-    }
-
-    if (direction) {
-      filteredOrphans = filteredOrphans.filter(orphan => 
-        orphan.direction === direction
-      )
-    }
-
-    if (zones.length > 0) {
-      filteredOrphans = filteredOrphans.filter(orphan => 
-        zones.includes(orphan.zone)
-      )
-    }
-
-    // Sort by time (most recent first)
-    filteredOrphans.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-
-    // Pagination
-    const total = filteredOrphans.length
-    const startIndex = (page - 1) * pageSize
-    const endIndex = startIndex + pageSize
-    const paginatedOrphans = filteredOrphans.slice(startIndex, endIndex)
-
-    const response = {
-      data: paginatedOrphans,
-      pagination: {
-        page,
-        pageSize,
-        total,
-        totalPages: Math.ceil(total / pageSize)
-      },
-      meta: {
-        from,
-        to,
-        zones,
-        status,
+    
+    const query = `
+      SELECT 
+        id as event_id,
+        zone,
+        plate_norm,
+        state_norm,
+        ts,
         direction,
-        search,
-        sort,
-        generatedAt: new Date().toISOString()
+        status,
+        camera_id,
+        quality
+      FROM events
+      WHERE 1=1 ${statusFilter}
+      ORDER BY ts DESC
+      LIMIT $1 OFFSET $2
+    `;
+    
+    const result = await pool.query(query, [limit, offset]);
+    
+    // Get counts
+    const countResult = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE status = 'ORPHAN_EXPIRED') as expired_count,
+        COUNT(*) FILTER (WHERE status = 'ORPHAN_OPEN') as open_count
+      FROM events
+      WHERE status IN ('ORPHAN_EXPIRED', 'ORPHAN_OPEN')
+    `);
+    
+    return NextResponse.json({
+      orphans: result.rows,
+      counts: {
+        expired: parseInt(countResult.rows[0].expired_count),
+        open: parseInt(countResult.rows[0].open_count)
+      },
+      pagination: {
+        limit,
+        offset,
+        hasMore: result.rows.length === limit
       }
-    }
-
-    return NextResponse.json(response)
+    });
   } catch (error) {
-    console.error('Error in orphans API:', error)
+    console.error('Error fetching orphans:', error);
     return NextResponse.json(
       { error: 'Failed to fetch orphans' },
       { status: 500 }
-    )
+    );
   }
 }
