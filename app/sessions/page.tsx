@@ -94,7 +94,7 @@ export default function SessionsPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b">
+                <tr className="border-b border-border">
                   <th className="text-left p-2">Plate</th>
                   <th className="text-left p-2">Zone</th>
                   <th className="text-left p-2">Entry</th>
@@ -107,7 +107,7 @@ export default function SessionsPage() {
               </thead>
               <tbody>
                 {sessions.map((session: any) => (
-                  <tr key={session.id} className="border-b hover:bg-gray-50">
+                  <tr key={session.id} className="border-b border-border hover:bg-accent/50 transition-colors">
                     <td className="p-2 font-mono">{session.plate_norm}</td>
                     <td className="p-2">{session.zone}</td>
                     <td className="p-2 text-sm">
@@ -120,9 +120,9 @@ export default function SessionsPage() {
                     <td className="p-2">${session.billing_amount}</td>
                     <td className="p-2">
                       <span className={`px-2 py-1 rounded text-xs ${
-                        session.match_type === 'EXACT' ? 'bg-green-100' :
-                        session.match_type === 'FUZZY_ACCEPTED' ? 'bg-yellow-100' :
-                        'bg-orange-100'
+                        session.match_type === 'EXACT' ? 'badge-exact' :
+                        session.match_type === 'FUZZY_ACCEPTED' ? 'badge-fuzzy' :
+                        'badge-state-mismatch'
                       }`}>
                         {session.match_type}
                       </span>
@@ -130,7 +130,7 @@ export default function SessionsPage() {
                     <td className="p-2">
                       <Link 
                         href={`/sessions/${session.id}`}
-                        className="text-blue-600 hover:underline"
+                        className="text-primary hover:underline transition-colors"
                       >
                         View
                       </Link>

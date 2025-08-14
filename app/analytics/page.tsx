@@ -10,7 +10,7 @@ export default function AnalyticsPage() {
   const [analyticsData, setAnalyticsData] = useState<any>({ daily: [], summary: {} });
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState('7');
-  const [zone, setZone] = useState('');
+  const [zone, setZone] = useState('all');
 
   useEffect(() => {
     fetchAnalytics();
@@ -20,7 +20,7 @@ export default function AnalyticsPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams({ days });
-      if (zone) params.append('zone', zone);
+      if (zone && zone !== 'all') params.append('zone', zone);
       
       const response = await fetch(`/api/analytics?${params}`);
       const data = await response.json();
@@ -74,7 +74,7 @@ export default function AnalyticsPage() {
             <SelectValue placeholder="All Zones" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Zones</SelectItem>
+            <SelectItem value="all">All Zones</SelectItem>
             <SelectItem value="MAIN_GATE">Main Gate</SelectItem>
             <SelectItem value="ZONE1">Zone 1</SelectItem>
             <SelectItem value="Omaha">Omaha</SelectItem>

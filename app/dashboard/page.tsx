@@ -101,10 +101,10 @@ export default function DashboardPage() {
         <CardContent>
           <div className="space-y-2">
             {recentSessions.map((session: any) => (
-              <div key={session.id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+              <div key={session.id} className="flex items-center justify-between p-2 hover:bg-accent/50 rounded transition-colors">
                 <div className="flex items-center space-x-4">
                   <span className="font-mono">{session.plate_norm}</span>
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-muted-foreground">
                     {new Date(session.entry_ts).toLocaleTimeString()} - 
                     {new Date(session.exit_ts).toLocaleTimeString()}
                   </span>
@@ -116,7 +116,7 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-          <Link href="/sessions" className="block mt-4 text-center text-blue-600 hover:underline">
+          <Link href="/sessions" className="block mt-4 text-center text-primary hover:underline transition-colors">
             View all sessions →
           </Link>
         </CardContent>

@@ -42,7 +42,7 @@ export default function SessionDetailPage() {
 
   return (
     <div className="p-8">
-      <Link href="/sessions" className="flex items-center mb-6 text-blue-600 hover:underline">
+      <Link href="/sessions" className="flex items-center mb-6 text-primary hover:underline transition-colors">
         <ArrowLeft className="h-4 w-4 mr-2" />
         Back to Sessions
       </Link>
@@ -56,23 +56,23 @@ export default function SessionDetailPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-600">Session ID:</span>
+              <span className="text-muted-foreground">Session ID:</span>
               <span className="font-mono">{session.id}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Plate:</span>
+              <span className="text-muted-foreground">Plate:</span>
               <span className="font-mono font-bold">{session.plate_norm}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Zone:</span>
+              <span className="text-muted-foreground">Zone:</span>
               <span>{session.zone}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Duration:</span>
+              <span className="text-muted-foreground">Duration:</span>
               <span>{session.duration_minutes} minutes</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Billing Amount:</span>
+              <span className="text-muted-foreground">Billing Amount:</span>
               <span className="font-bold">${session.billing_amount}</span>
             </div>
           </CardContent>
@@ -84,19 +84,19 @@ export default function SessionDetailPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-600">Entry Time:</span>
+              <span className="text-muted-foreground">Entry Time:</span>
               <span>{new Date(session.entry_ts).toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Entry Camera:</span>
+              <span className="text-muted-foreground">Entry Camera:</span>
               <span>{session.entry_camera || 'N/A'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Exit Time:</span>
+              <span className="text-muted-foreground">Exit Time:</span>
               <span>{new Date(session.exit_ts).toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Exit Camera:</span>
+              <span className="text-muted-foreground">Exit Camera:</span>
               <span>{session.exit_camera || 'N/A'}</span>
             </div>
           </CardContent>
@@ -108,21 +108,21 @@ export default function SessionDetailPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-600">Match Type:</span>
+              <span className="text-muted-foreground">Match Type:</span>
               <span className={`px-2 py-1 rounded ${
-                session.match_type === 'EXACT' ? 'bg-green-100' :
-                session.match_type === 'FUZZY_ACCEPTED' ? 'bg-yellow-100' :
-                'bg-orange-100'
+                session.match_type === 'EXACT' ? 'badge-exact' :
+                session.match_type === 'FUZZY_ACCEPTED' ? 'badge-fuzzy' :
+                'badge-state-mismatch'
               }`}>
                 {session.match_type}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Match Method:</span>
+              <span className="text-muted-foreground">Match Method:</span>
               <span>{session.match_method}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Confidence Score:</span>
+              <span className="text-muted-foreground">Confidence Score:</span>
               <span>{(session.confidence_score * 100).toFixed(1)}%</span>
             </div>
           </CardContent>
@@ -136,7 +136,7 @@ export default function SessionDetailPage() {
             <CardContent>
               {Object.entries(session.flags).map(([key, value]) => (
                 <div key={key} className="flex justify-between">
-                  <span className="text-gray-600">{key}:</span>
+                  <span className="text-muted-foreground">{key}:</span>
                   <span>{String(value)}</span>
                 </div>
               ))}

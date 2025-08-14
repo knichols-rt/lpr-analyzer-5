@@ -11,8 +11,8 @@ export default function EventsPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
-    direction: '',
-    status: '',
+    direction: 'all',
+    status: 'all',
     zone: ''
   });
   const [pagination, setPagination] = useState({
@@ -33,8 +33,8 @@ export default function EventsPage() {
         offset: pagination.offset.toString()
       });
       
-      if (filters.direction) params.append('direction', filters.direction);
-      if (filters.status) params.append('status', filters.status);
+      if (filters.direction && filters.direction !== 'all') params.append('direction', filters.direction);
+      if (filters.status && filters.status !== 'all') params.append('status', filters.status);
       if (filters.zone) params.append('zone', filters.zone);
       
       const response = await fetch(`/api/events?${params}`);
@@ -73,7 +73,7 @@ export default function EventsPage() {
                 <SelectValue placeholder="Direction" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All</SelectItem>
+                <SelectItem value="all">All</SelectItem>
                 <SelectItem value="IN">IN</SelectItem>
                 <SelectItem value="OUT">OUT</SelectItem>
               </SelectContent>
@@ -84,7 +84,7 @@ export default function EventsPage() {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All</SelectItem>
+                <SelectItem value="all">All</SelectItem>
                 <SelectItem value="OPEN">OPEN</SelectItem>
                 <SelectItem value="PAIRED">PAIRED</SelectItem>
                 <SelectItem value="ORPHAN_OPEN">ORPHAN_OPEN</SelectItem>
@@ -111,7 +111,7 @@ export default function EventsPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b">
+                <tr className="border-b border-border">
                   <th className="text-left p-2">ID</th>
                   <th className="text-left p-2">Timestamp</th>
                   <th className="text-left p-2">Direction</th>
@@ -124,14 +124,14 @@ export default function EventsPage() {
               </thead>
               <tbody>
                 {events.map((event: any) => (
-                  <tr key={event.id} className="border-b hover:bg-gray-50">
+                  <tr key={event.id} className="border-b border-border hover:bg-accent/50 transition-colors">
                     <td className="p-2 font-mono text-sm">{event.id}</td>
                     <td className="p-2 text-sm">
                       {new Date(event.ts).toLocaleString()}
                     </td>
                     <td className="p-2">
                       <span className={`px-2 py-1 rounded text-xs ${
-                        event.direction === 'IN' ? 'bg-green-100' : 'bg-blue-100'
+                        event.direction === 'IN' ? 'badge-exact' : 'badge-fuzzy'
                       }`}>
                         {event.direction}
                       </span>
@@ -140,10 +140,10 @@ export default function EventsPage() {
                     <td className="p-2">{event.zone}</td>
                     <td className="p-2">
                       <span className={`px-2 py-1 rounded text-xs ${
-                        event.status === 'OPEN' ? 'bg-yellow-100' :
-                        event.status === 'PAIRED' ? 'bg-green-100' :
-                        event.status.includes('ORPHAN') ? 'bg-red-100' :
-                        'bg-gray-100'
+                        event.status === 'OPEN' ? 'badge-open' :
+                        event.status === 'PAIRED' ? 'badge-exact' :
+                        event.status.includes('ORPHAN') ? 'badge-expired' :
+                        'badge-state-mismatch'
                       }`}>
                         {event.status}
                       </span>

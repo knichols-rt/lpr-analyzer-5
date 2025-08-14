@@ -104,7 +104,7 @@ export default function OrphansPage() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b">
+                    <tr className="border-b border-border">
                       <th className="text-left p-2">Event ID</th>
                       <th className="text-left p-2">Timestamp</th>
                       <th className="text-left p-2">Direction</th>
@@ -116,14 +116,14 @@ export default function OrphansPage() {
                   </thead>
                   <tbody>
                     {orphans.map((orphan: any) => (
-                      <tr key={orphan.event_id} className="border-b hover:bg-gray-50">
+                      <tr key={orphan.event_id} className="border-b border-border hover:bg-accent/50 transition-colors">
                         <td className="p-2 font-mono text-sm">{orphan.event_id}</td>
                         <td className="p-2 text-sm">
                           {new Date(orphan.ts).toLocaleString()}
                         </td>
                         <td className="p-2">
                           <span className={`px-2 py-1 rounded text-xs ${
-                            orphan.direction === 'IN' ? 'bg-green-100' : 'bg-blue-100'
+                            orphan.direction === 'IN' ? 'badge-exact' : 'badge-fuzzy'
                           }`}>
                             {orphan.direction}
                           </span>
@@ -132,7 +132,7 @@ export default function OrphansPage() {
                         <td className="p-2">{orphan.zone}</td>
                         <td className="p-2">
                           <span className={`px-2 py-1 rounded text-xs ${
-                            orphan.status === 'ORPHAN_EXPIRED' ? 'bg-orange-100' : 'bg-red-100'
+                            orphan.status === 'ORPHAN_EXPIRED' ? 'badge-expired' : 'badge-open'
                           }`}>
                             {orphan.status}
                           </span>

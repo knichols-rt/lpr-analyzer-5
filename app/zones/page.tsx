@@ -49,7 +49,7 @@ export default function ZonesPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 flex items-center">
+                  <span className="text-sm text-muted-foreground flex items-center">
                     <Clock className="h-3 w-3 mr-1" />
                     Horizon Days
                   </span>
@@ -57,7 +57,7 @@ export default function ZonesPage() {
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600 flex items-center">
+                  <span className="text-sm text-muted-foreground flex items-center">
                     <Target className="h-3 w-3 mr-1" />
                     Fuzzy Threshold
                   </span>
@@ -65,12 +65,12 @@ export default function ZonesPage() {
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Review Below</span>
+                  <span className="text-sm text-muted-foreground">Review Below</span>
                   <span className="font-semibold">{(zone.review_required_below_score * 100).toFixed(0)}%</span>
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Max Stay</span>
+                  <span className="text-sm text-muted-foreground">Max Stay</span>
                   <span className="font-semibold">{zone.max_stay_hours} hrs</span>
                 </div>
               </div>
@@ -81,24 +81,24 @@ export default function ZonesPage() {
                   <div className="space-y-1">
                     {Object.entries(zone.billing_rules).map(([key, value]) => (
                       <div key={key} className="flex justify-between text-sm">
-                        <span className="text-gray-600">{key}:</span>
+                        <span className="text-muted-foreground">{key}:</span>
                         <span>{typeof value === 'number' ? `$${value}` : String(value)}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">No billing rules configured</p>
+                  <p className="text-sm text-muted-foreground">No billing rules configured</p>
                 )}
               </div>
               
               <div className="pt-4 border-t">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-600">Total Sessions</span>
+                    <span className="text-muted-foreground">Total Sessions</span>
                     <p className="font-semibold">{zone.total_sessions || 0}</p>
                   </div>
                   <div>
-                    <span className="text-gray-600">Total Events</span>
+                    <span className="text-muted-foreground">Total Events</span>
                     <p className="font-semibold">{zone.total_events || 0}</p>
                   </div>
                 </div>
@@ -111,8 +111,8 @@ export default function ZonesPage() {
       {zones.length === 0 && (
         <Card>
           <CardContent className="text-center py-8">
-            <p className="text-gray-500">No zones configured yet.</p>
-            <p className="text-sm text-gray-400 mt-2">
+            <p className="text-muted-foreground">No zones configured yet.</p>
+            <p className="text-sm text-muted-foreground/70 mt-2">
               Add zones using SQL: INSERT INTO zone_config (zone_id, horizon_days, fuzzy_threshold) VALUES ('ZONE_NAME', 8, 0.95);
             </p>
           </CardContent>
