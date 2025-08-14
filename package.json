@@ -7,7 +7,7 @@
     "setup-db": "node scripts/setup-database.js",
     "test-schema": "node scripts/test-schema.js",
     "load-csv": "node scripts/load-omaha-csv.js",
-    "workers": "ts-node src/workers/index.ts",
+    "workers": "node -r dotenv/config dist/workers/index.js",
     "workers:dev": "nodemon --exec ts-node src/workers/index.ts",
     "dev": "next dev",
     "build": "next build && tsc",
@@ -24,6 +24,7 @@
   "author": "Kyle Nichols <knichols-rt@github.com>",
   "license": "MIT",
   "dependencies": {
+    "@radix-ui/react-select": "^2.2.6",
     "@tailwindcss/postcss": "^4.1.11",
     "@tanstack/react-table": "^8.21.3",
     "@types/react": "^19.1.10",
@@ -36,12 +37,14 @@
     "lucide-react": "^0.539.0",
     "next": "^15.4.6",
     "pg": "^8.16.3",
+    "pg-copy-streams": "^7.0.0",
     "playwright": "^1.54.2",
     "postcss": "^8.5.6",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-window": "^1.8.11",
     "react-window-infinite-loader": "^1.0.10",
+    "recharts": "^3.1.2",
     "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
