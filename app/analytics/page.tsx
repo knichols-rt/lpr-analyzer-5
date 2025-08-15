@@ -2,9 +2,55 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+
+// Dynamic imports for Recharts to avoid SSR issues
+const ResponsiveContainer = dynamic(
+  () => import('recharts').then(mod => mod.ResponsiveContainer),
+  { ssr: false, loading: () => <div className="h-[300px] flex items-center justify-center">Loading chart...</div> }
+);
+
+const LineChart = dynamic(
+  () => import('recharts').then(mod => mod.LineChart),
+  { ssr: false }
+);
+
+const Line = dynamic(
+  () => import('recharts').then(mod => mod.Line),
+  { ssr: false }
+);
+
+const BarChart = dynamic(
+  () => import('recharts').then(mod => mod.BarChart),
+  { ssr: false }
+);
+
+const Bar = dynamic(
+  () => import('recharts').then(mod => mod.Bar),
+  { ssr: false }
+);
+
+const XAxis = dynamic(
+  () => import('recharts').then(mod => mod.XAxis),
+  { ssr: false }
+);
+
+const YAxis = dynamic(
+  () => import('recharts').then(mod => mod.YAxis),
+  { ssr: false }
+);
+
+const CartesianGrid = dynamic(
+  () => import('recharts').then(mod => mod.CartesianGrid),
+  { ssr: false }
+);
+
+const Tooltip = dynamic(
+  () => import('recharts').then(mod => mod.Tooltip),
+  { ssr: false }
+);
 
 export default function AnalyticsPage() {
   const [analyticsData, setAnalyticsData] = useState<any>({ 
@@ -22,10 +68,17 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState('7');
   const [zone, setZone] = useState('all');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    fetchAnalytics();
-  }, [days, zone]);
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      fetchAnalytics();
+    }
+  }, [days, zone, mounted]);
 
   async function fetchAnalytics() {
     try {
@@ -93,6 +146,10 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (!mounted) {
+    return <div className="p-8">Loading...</div>;
   }
 
   if (loading) {
@@ -184,7 +241,7 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
-      {hasData ? (
+      {mounted && hasData ? (
         <>
           <Card className="mb-6">
             <CardHeader>

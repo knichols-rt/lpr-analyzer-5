@@ -42,6 +42,10 @@ function parseCSV(csvData: string): any[] {
         case 'Camera Id':
           row.camera_id = value;
           break;
+        case 'State':
+          row.state_raw = value;
+          row.state_norm = value.trim().toUpperCase();
+          break;
         default:
           row[header] = value;
       }
@@ -51,9 +55,7 @@ function parseCSV(csvData: string): any[] {
     row.dupe_key = `${row.zone}_${row.ts}_${row.plate_norm}_${row.direction}`;
     row.raw = {};
     
-    // Set default values
-    row.state_raw = row.state_raw || '';
-    row.state_norm = row.state_norm || '';
+    // Set default values for unset fields
     row.quality = row.quality || 0;
     
     return row;

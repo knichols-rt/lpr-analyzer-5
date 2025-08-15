@@ -7,8 +7,46 @@ import IORedis from 'ioredis';
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
 
 function score(inPlate: string, outPlate: string): number {
-  // TODO: OCR confusions, position weights, etc.
-  return 0.9;
+  // Handle exact matches
+  if (inPlate === outPlate) return 1.0;
+  
+  // Handle empty strings
+  if (!inPlate || !outPlate) return 0;
+  
+  // Calculate Levenshtein distance
+  const matrix: number[][] = [];
+  const len1 = inPlate.length;
+  const len2 = outPlate.length;
+  
+  // Initialize first row and column
+  for (let i = 0; i <= len1; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= len2; j++) {
+    matrix[0][j] = j;
+  }
+  
+  // Fill in the matrix
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      if (inPlate[i - 1] === outPlate[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,    // deletion
+          matrix[i][j - 1] + 1,    // insertion
+          matrix[i - 1][j - 1] + 1 // substitution
+        );
+      }
+    }
+  }
+  
+  // Calculate similarity score (1 - normalized distance)
+  const distance = matrix[len1][len2];
+  const maxLen = Math.max(len1, len2);
+  const similarity = maxLen === 0 ? 1 : 1 - (distance / maxLen);
+  
+  return Math.max(0, similarity);
 }
 
 const prefilterSQL = `
@@ -27,13 +65,13 @@ FROM ins i
 JOIN outs o
   ON o.ts > i.ts
  AND o.ts - i.ts <= INTERVAL '8 days'
-WHERE i.plate_norm_fuzzy % o.plate_norm_fuzzy
+WHERE similarity(i.plate_norm_fuzzy, o.plate_norm_fuzzy) > 0.3
 ORDER BY i.ts
 LIMIT 5000;
 `;
 
 export default new Worker('fuzzy', async job => {
-  const { zone, minScore = 0.95 } = job.data as FuzzyJobData;
+  const { zone, minScore = 0.85 } = job.data as FuzzyJobData;
   console.log(`Processing fuzzy matching job ${job.id} for zone ${zone} with minScore ${minScore}`);
   const { rows: pairs } = await pool.query(prefilterSQL, [zone]);
 
